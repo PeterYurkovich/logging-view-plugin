@@ -37,7 +37,7 @@ export const cancellableFetch = <T>(
   const abort = () => abortController.abort();
 
   const fetchPromise = async (): Promise<T> => {
-    const requestTimeout = timeout ?? 30 * 1000;
+    const requestTimeout = timeout;
 
     try {
       const method = init?.method || 'GET';
@@ -48,24 +48,36 @@ export const cancellableFetch = <T>(
       };
 
       let result: T;
+      const timeoutPromise = new Promise<Response>((_resolve, reject) => {
+        setTimeout(() => reject(new TimeoutError(url, timeout)), timeout);
+      });
 
       if (method.toUpperCase() === 'POST') {
-        result = await consoleFetchJSON.post(
-          url,
-          init?.body,
-          options,
-          requestTimeout > 0 ? requestTimeout : undefined,
-        );
+        result = await Promise.race([
+          consoleFetchJSON.post(
+            url,
+            init?.body,
+            options,
+            requestTimeout > 0 ? requestTimeout : undefined,
+          ),
+          timeoutPromise,
+        ]);
       } else {
-        result = await consoleFetchJSON(
-          url,
-          method,
-          options,
-          requestTimeout > 0 ? requestTimeout : undefined,
+        result = await Promise.race([
+          consoleFetchJSON(url, method, options, requestTimeout > 0 ? requestTimeout : undefined),
+          timeoutPromise,
+        ]).then(
+          (res) => {
+            console.debug('success', Date.now().toLocaleString());
+            return res;
+          },
+          () => {
+            console.debug('failure', Date.now().toLocaleString());
+          },
         );
       }
 
-      return result;
+      return await result;
     } catch (error: unknown) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {

@@ -67,7 +67,6 @@ type RowMemoProps<T> = RowProps<T> & {
 };
 
 const RowMemo = memo(
-  // eslint-disable-next-line
   ({ Row, isScrolling, style, ...props }: RowMemoProps<LogTableData>) => <Row {...props} />,
   (_, nextProps) => {
     if (nextProps.isScrolling) {
@@ -181,7 +180,6 @@ const VirtualizedTableBody = ({
     }
     cellMeasurementCache.clearAll();
     tableBodyRef.current?.forceUpdateVirtualGrid();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedItems, showResources]);
 
   const activeColumnIDs = useMemo(() => new Set(columns.map((c) => c.id)), [columns]);
@@ -321,6 +319,11 @@ export const VirtualizedLogsTable = ({
     scrollerRef.current?.updatePosition();
   }, [shouldResize]);
 
+  console.debug('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~');
+  console.debug('isLoading', isLoading);
+  console.debug('isLoadingMore', isLoadingMore);
+  console.debug('hasMoreLogsData', hasMoreLogsData);
+
   return (
     <div className="lv-plugin__virtualized-table">
       <Table aria-label="Logs Table" variant="compact" className="lv-plugin__table" isStriped>
@@ -416,7 +419,7 @@ export const VirtualizedLogsTable = ({
           )}
         </WithScrollContainer>
 
-        {!isLoading && hasMoreLogsData && (
+        {!(isLoading || isLoadingMore) && hasMoreLogsData && (
           <Tbody>
             <Tr
               className="lv-plugin__table__row-info lv-plugin__table__row-more-data"

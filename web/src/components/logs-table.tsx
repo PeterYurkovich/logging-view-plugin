@@ -38,7 +38,7 @@ interface LogsTableProps {
   logsData?: QueryRangeResponse;
   isLoading?: boolean;
   hasMoreLogsData?: boolean;
-  isLoadingMore?: boolean;
+  isLoadingMore: boolean;
   onLoadMore?: (lastTimestampNs: string) => void;
   onSortByDate?: (direction?: Direction) => void;
   direction?: Direction;

@@ -14,6 +14,10 @@ import {
   executeHistogramQuery,
   executeQueryRange,
   executeVolumeRange,
+  throwResponseError,
+  toQueryRangeResponse,
+  toRecord,
+  validateQueryRangeResponse,
 } from '../loki-client';
 import { intervalFromTimeRange, numericTimeRange, timeRangeFromDuration } from '../time-range';
 import { msToNs } from '../value-utils';
@@ -36,6 +40,7 @@ type State = {
   isLoadingMoreLogsData: boolean;
   logsData?: QueryRangeResponse;
   logsError?: unknown;
+  moreLogsError?: unknown;
   isLoadingVolumeData?: boolean;
   volumeData?: VolumeRangeResponse;
   volumeError?: unknown;
@@ -78,6 +83,10 @@ type Action =
     }
   | {
       type: 'logsError';
+      payload: { error: unknown };
+    }
+  | {
+      type: 'moreLogsError';
       payload: { error: unknown };
     }
   | {
@@ -156,20 +165,25 @@ const reducer = (state: State, action: Action): State => {
         histogramError: action.payload.error,
       };
     case 'logsRequest':
+      console.debug('logsRequest');
       return {
         ...state,
         isLoadingLogsData: true,
         logsData: undefined,
         logsError: undefined,
+        moreLogsError: undefined,
         hasMoreLogsData: false,
+        isLoadingMoreLogsData: false,
         isStreaming: false,
         isLoadingVolumeData: false,
       };
     case 'startStreaming':
+      console.debug('startStreaming');
       return {
         ...state,
         logsData: undefined,
         logsError: undefined,
+        moreLogsError: undefined,
         hasMoreLogsData: false,
         isStreaming: true,
       };
@@ -180,6 +194,7 @@ const reducer = (state: State, action: Action): State => {
         logsError: undefined,
       };
     case 'streamingResponse':
+      console.debug('streamingResponse');
       return {
         ...state,
         logsData: appendData(state.logsData, action.payload.logsData, STREAMING_MAX_LOGS_LIMIT),
@@ -210,16 +225,20 @@ const reducer = (state: State, action: Action): State => {
         ...state,
         isLoadingMoreLogsData: true,
         logsError: undefined,
+        moreLogsError: undefined,
       };
     case 'logsResponse':
+      console.debug('logsResponse');
       return {
         ...state,
         isLoadingLogsData: false,
+        isLoadingMoreLogsData: false,
         showVolumeGraph: false,
         logsData: action.payload.logsData,
         hasMoreLogsData: hasMoreLogs(action.payload.logsData, action.payload.config.logsLimit),
       };
     case 'moreLogsResponse':
+      console.debug('moreLogsResponse');
       return {
         ...state,
         isLoadingMoreLogsData: false,
@@ -227,11 +246,22 @@ const reducer = (state: State, action: Action): State => {
         hasMoreLogsData: hasMoreLogs(action.payload.logsData, action.payload.config.logsLimit),
       };
     case 'logsError':
+      console.debug('logsError: only sets isLoadingsFalse');
       return {
         ...state,
         isLoadingLogsData: false,
         isLoadingMoreLogsData: false,
         logsError: action.payload.error,
+        moreLogsError: undefined,
+      };
+    case 'moreLogsError':
+      console.debug('moreLogsError: only sets isLoadingsFalse');
+      return {
+        ...state,
+        isLoadingLogsData: false,
+        isLoadingMoreLogsData: false,
+        logsError: action.payload.error,
+        moreLogsError: undefined,
       };
 
     default:
@@ -269,7 +299,7 @@ export const useLogs = (
   }
 
   const configRef = useRef(logsContext.config);
-  // eslint-disable-next-line react-hooks/refs
+
   configRef.current = logsContext.config;
 
   const [
@@ -283,6 +313,7 @@ export const useLogs = (
       histogramError,
       volumeData,
       logsError,
+      moreLogsError,
       volumeError,
       showVolumeGraph,
       hasMoreLogsData,
@@ -312,7 +343,7 @@ export const useLogs = (
     schema: Schema;
   }) => {
     if (query.length === 0) {
-      dispatch({ type: 'logsError', payload: { error: new Error('Query is empty') } });
+      dispatch({ type: 'moreLogsError', payload: { error: new Error('Query is empty') } });
       return;
     }
 
@@ -351,11 +382,17 @@ export const useLogs = (
         namespace,
         direction: currentDirection.current,
         schema,
+        timeout: 2,
       });
 
       logsAbort.current = abort;
 
-      const queryResponse = await request();
+      const queryResponse = await request()
+        .then(toRecord)
+        .then(throwResponseError)
+        .then(toQueryRangeResponse)
+        .then(validateQueryRangeResponse);
+      console.debug('queryResponse', queryResponse);
 
       dispatch({
         type: 'moreLogsResponse',
@@ -363,7 +400,7 @@ export const useLogs = (
       });
     } catch (error) {
       if (!isAbortError(error)) {
-        dispatch({ type: 'logsError', payload: { error } });
+        dispatch({ type: 'moreLogsError', payload: { error } });
       }
     }
   };
@@ -419,6 +456,7 @@ export const useLogs = (
         namespace,
         direction: currentDirection.current,
         schema,
+        timeout: 2000,
       });
 
       logsAbort.current = abort;
@@ -671,6 +709,7 @@ export const useLogs = (
     getMoreLogs,
     hasMoreLogsData,
     logsError,
+    moreLogsError,
     getHistogram,
     histogramError,
     toggleStreaming,
